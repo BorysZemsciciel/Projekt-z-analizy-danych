@@ -27,7 +27,7 @@ Zauważono także, że kolumny fo_col	fc_col zawierają tylko 1 wartość. Powin
 
 Podczas rysowania wykresów dla kolumn zaczynających się od part_01 zauważono, że dużo wartości jest skupionych w okolicy zera.
 
-Została podjęta próba wykonania klasyfikatora, ale niestety nie zakończyła się powodzeniem. W ostatnim punkcie zostały opisane podjęte kroki, które zostały podjęte oraz napotkane blędy.
+Został wykonany klasyfikator, ze względu na jego długi czas pracy wyniki będą przesłane później.
 
 #<a name="1"></a>
 # Wykorzystane biblioteki
