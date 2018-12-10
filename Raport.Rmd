@@ -42,6 +42,8 @@ library(ggExtra)
 library(caret)
 library(corrplot)
 library(plotly)
+library(randomForest)
+
 
 
 ```
@@ -60,35 +62,34 @@ Wczytanie danych z pliku.
 
 ```{r readData, results='hide'}
 
-rawData <- data.table::fread("all_summary.csv", header="auto",sep="auto")
+rawData <- data.table::fread("head1.csv", header="auto",sep="auto")
 ```
 
 Załadowano `r nrow(rawData)` wierszy, które mają `r ncol(rawData)` zmiennych.
 
-Usuwanie z danych wiersze posiadające wartość zmiennej res_name równą: "UNK", "UNX", "UNL", "DUM", "N", "BLOB", "ALA", "ARG" ,"ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE", "LEU", "LYS", "MET", "MSE", "PHE", "PRO", "SEC", "SER", "THR", "TRP", "TYR", "VAL", "DA", "DG", "DT", "DC", "DU", "A", "G", "T", "C", "U", "HOH", "H20", "WAT" lub “NAN
-
 #<a name="7"></a>
 #Zliczenie 50 najpopularniejszych
 ```{r}
-nrow(rawData)
 popular <- rawData[ , .N, by = res_name]
 popular <- popular[order(-N)]
 popular <- popular[1:50]
 pop_names <- popular$res_name
 rawData <- select(filter(rawData, res_name %in% pop_names),matches("*"))
-nrow(rawData)
 ```
+Pozostało `r nrow(rawData)` wierszy z 50 najpopularniejszych grup.
 
+
+Usuwanie z danych wiersze posiadające wartość zmiennej res_name równą: "UNK", "UNX", "UNL", "DUM", "N", "BLOB", "ALA", "ARG" ,"ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE", "LEU", "LYS", "MET", "MSE", "PHE", "PRO", "SEC", "SER", "THR", "TRP", "TYR", "VAL", "DA", "DG", "DT", "DC", "DU", "A", "G", "T", "C", "U", "HOH", "H20", "WAT" lub “NAN
 #<a name="4"></a>
 # Wstępne czyszczenie danych
 
 ```{r removeRes_name, results='hide'}
-selectedData  <-  selectedData  <-  rawData %>% filter(!(res_name %in% c("UNK", "UNX", "UNL", "DUM", "N", "BLOB", "ALA", "ARG" ,"ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE", "LEU", "LYS", "MET", "MSE", "PHE", "PRO", "SEC", "SER", "THR", "TRP", "TYR", "VAL", "DA", "DG", "DT", "DC", "DU", "A", "G", "T", "C", "U", "HOH", "H20", "WAT", "NAN")))
+selectedData  <-  selectedData  <-  rawData %>% filter(!(res_name %in% c("UNK", "UNX", "UNL", "DUM", "N", "BLOB", "ALA", "ARG" ,"ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE", "LEU", "LYS", "MET", "MSE", "PHE", "PRO", "SEC", "SER", "THR", "TRP", "TYR", "VAL", "DA", "DG", "DT", "DC", "DU", "A", "G", "T", "C", "U", "HOH", "H20", "WAT", "NAN", "", "NA", NA)))
 
 ```
 
 
-```{r pdb_code_res_name, results='hide'}
+```{r pdb_code_res_name, results='hide', echo=FALSE}
 
 pdb_code_res_name  <-  selectedData
 
@@ -224,9 +225,6 @@ for (i in 1:length(part_01_data)) {
     p <- ggplot() + aes(i_column_without_NA) + geom_histogram(fill=I("white"), col=I("black")) + xlab(names(part_01_data[i])) + labs(title=paste("Histogram of ", names(part_01_data[i]))) + geom_vline(xintercept=m, color="red", linetype="dashed", size=1) + annotate("text", x=m, y=-300, label=c(m), hjust=-0.1, color="red")
   
   print(p)
-  
-
-
 }
 
 ```
@@ -251,6 +249,11 @@ lm_atom_summary <- summary(lm_atom_model)
 lm_electron_model <- lm(local_res_atom_non_h_electron_sum ~ ., lm_data)
 lm_electron_summary <- summary(lm_electron_model)
 
+pdb_code_res_name <- pdb_code_res_name[ , -which(names(pdb_code_res_name) %in% c("blob_coverage","res_coverage","pdb_code","res_id","chain_id","skeleton_data","fc_col", "fo_col", "weight_col", "title"))]
+
+pdb_code_res_name$res_name <- as.character(pdb_code_res_name$res_name)
+pdb_code_res_name$res_name <- as.factor(pdb_code_res_name$res_name)
+pdb_code_res_name[is.na(pdb_code_res_name)] <- -1000000
 ```
 
 Miary dla liczby atomów:<br />
@@ -263,3 +266,41 @@ RMSEL `r lm_electron_summary$sigma`<br />
 
 #<a name="15"></a>
 #Klasyfikator
+
+```{r echo=FALSE}
+inTraining <- 
+    createDataPartition(
+        # atrybut do stratyfikacji
+        y = pdb_code_res_name$res_name,
+        # procent w zbiorze uczącym
+        p = .75,
+        # chcemy indeksy a nie listę
+        list = FALSE)
+training <- pdb_code_res_name[ inTraining,]
+testing  <- pdb_code_res_name[-inTraining,]
+rfGrid <- expand.grid(mtry = 10:30)
+gridCtrl <- trainControl(
+    method = "repeatedcv",
+    number = 2,
+    repeats = 3)
+
+fitTune <- train(res_name ~ .,
+             data = training,
+             method = "rf",
+             trControl = gridCtrl,
+             tuneGrid = rfGrid,
+             ntree = 30)
+
+fitTune
+
+ggplot(fitTune) + theme_bw()
+predClasses <- predict(fitTune,
+                         newdata = testing)
+cm <- confusionMatrix(data = predClasses, 
+                testing$res_name)
+
+cm$overall
+cm$byClass %>% kable()
+```
+
+
