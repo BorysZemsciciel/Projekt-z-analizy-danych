@@ -67,6 +67,18 @@ Załadowano `r nrow(rawData)` wierszy, które mają `r ncol(rawData)` zmiennych.
 
 Usuwanie z danych wiersze posiadające wartość zmiennej res_name równą: "UNK", "UNX", "UNL", "DUM", "N", "BLOB", "ALA", "ARG" ,"ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE", "LEU", "LYS", "MET", "MSE", "PHE", "PRO", "SEC", "SER", "THR", "TRP", "TYR", "VAL", "DA", "DG", "DT", "DC", "DU", "A", "G", "T", "C", "U", "HOH", "H20", "WAT" lub “NAN
 
+#<a name="7"></a>
+#Zliczenie 50 najpopularniejszych
+```{r}
+nrow(rawData)
+popular <- rawData[ , .N, by = res_name]
+popular <- popular[order(-N)]
+popular <- popular[1:50]
+pop_names <- popular$res_name
+rawData <- select(filter(rawData, res_name %in% pop_names),matches("*"))
+nrow(rawData)
+```
+
 #<a name="4"></a>
 # Wstępne czyszczenie danych
 
@@ -89,18 +101,6 @@ pdb_code_res_name  <-  selectedData
 
 kable(summary(rawData))
 
-```
-
-#<a name="7"></a>
-#Zliczenie 50 najpopularniejszych
-```{r}
-nrow(rawData)
-popular <- rawData[ , .N, by = res_name]
-popular <- popular[order(-N)]
-popular <- popular[1:50]
-pop_names <- popular$res_name
-rawData <- select(filter(rawData, res_name %in% pop_names),matches("*"))
-nrow(rawData)
 ```
 
 #<a name="8"></a>
@@ -263,7 +263,3 @@ RMSEL `r lm_electron_summary$sigma`<br />
 
 #<a name="15"></a>
 #Klasyfikator
-
-Podczas prób budowy klasyfikatora ze zbioru danych wybrano klasy res_name, które mają minimum 50 wystąpień w pliku a następnie na ich podstawie zbudować klasyfikator. Do budowy klasyfikatora użyłem tylko wartośći, które zostały obliczone na podstawie ligandu.
-
-Użyto metody powtarzanej oceny krżyżowej, a model klasyfikacyjny powstał zgodnie z alogrytmem Random Forest.
