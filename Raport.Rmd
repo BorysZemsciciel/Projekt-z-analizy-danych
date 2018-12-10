@@ -1,0 +1,269 @@
+### Spis treści
+
+1. [Wykorzystane biblioteki](#1)
+2. [Kod zapewniający powtarzalność](#2)
+3. [Wczytanie danych z pliku](#3)
+4. [Wstępne czyszczenie danych](#4)
+5. [Kod przetwarzający brakujące dane](#5)
+6. [Podsumowanie wartości w kolumnach](#6)
+7. [Zliczenie 50 najpopularniejszych](#7)
+8. [Korelacje między zmiennymi](#8)
+9. [Liczba przypadków dla każdej z klas](#9)
+10. [Wykresy rozkładu liczby atomów i elektronów](#10)
+11. [Klasy z największą niezgodnością liczby atomów i elektronów](#11)
+12. [Rozkład wartości kolumn part_01](#12)
+13. [Interaktywny wykres](#13)
+14. [Przewidywanie liczby elektronów i atomów na podstawie innych kolumn](#14)
+15. [Klasyfikator](#15)
+
+
+# Posumowanie analizy zbioru danych
+
+
+
+W danych znajdowało się bardzo dużo wartości NA. W obliczeniach w zależności co było liczone zostały one zamienione lub pominięte - szczególnie podczas obliczania korelacji (sposob obsługi wartości NA podczas obliczania korelacji został opisany w punkcie 5).
+
+Zauważono także, że kolumny fo_col	fc_col zawierają tylko 1 wartość. Powinny one zostać usunięte ze zbioru przy próbie utworzenia klasyfikatora.
+
+Podczas rysowania wykresów dla kolumn zaczynających się od part_01 zauważono, że dużo wartości jest skupionych w okolicy zera.
+
+Została podjęta próba wykonania klasyfikatora, ale niestety nie zakończyła się powodzeniem. W ostatnim punkcie zostały opisane podjęte kroki, które zostały podjęte oraz napotkane blędy.
+
+#<a name="1"></a>
+# Wykorzystane biblioteki
+
+
+```{r libraryLists, warning=FALSE, message=FALSE}
+
+library(knitr)
+library(ggplot2)
+library(dplyr)
+library(ggExtra)
+library(caret)
+library(corrplot)
+library(plotly)
+
+
+```
+
+#<a nam"2"></a>
+# Kod zapewniający powtarzalność
+```{r setSeed, warning=FALSE, message=FALSE, echo=FALSE}
+
+set.seed(122070)
+
+```
+
+#<a name="3"></a>
+# Wczytanie danych z pliku 
+Wczytanie danych z pliku.
+
+```{r readData, results='hide'}
+
+rawData <- data.table::fread("all_summary.csv", header="auto",sep="auto")
+```
+
+Załadowano `r nrow(rawData)` wierszy, które mają `r ncol(rawData)` zmiennych.
+
+Usuwanie z danych wiersze posiadające wartość zmiennej res_name równą: "UNK", "UNX", "UNL", "DUM", "N", "BLOB", "ALA", "ARG" ,"ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE", "LEU", "LYS", "MET", "MSE", "PHE", "PRO", "SEC", "SER", "THR", "TRP", "TYR", "VAL", "DA", "DG", "DT", "DC", "DU", "A", "G", "T", "C", "U", "HOH", "H20", "WAT" lub “NAN
+
+#<a name="4"></a>
+# Wstępne czyszczenie danych
+
+```{r removeRes_name, results='hide'}
+selectedData  <-  selectedData  <-  rawData %>% filter(!(res_name %in% c("UNK", "UNX", "UNL", "DUM", "N", "BLOB", "ALA", "ARG" ,"ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE", "LEU", "LYS", "MET", "MSE", "PHE", "PRO", "SEC", "SER", "THR", "TRP", "TYR", "VAL", "DA", "DG", "DT", "DC", "DU", "A", "G", "T", "C", "U", "HOH", "H20", "WAT", "NAN")))
+
+```
+
+
+```{r pdb_code_res_name, results='hide'}
+
+pdb_code_res_name  <-  selectedData
+
+```
+
+#<a name="6"></a>
+# Podsumowanie wartości w kolumnach
+
+```{r summaryColumn, echo=FALSE}
+
+kable(summary(rawData))
+
+```
+
+#<a name="7"></a>
+#Zliczenie 50 najpopularniejszych
+```{r}
+nrow(rawData)
+popular <- rawData[ , .N, by = res_name]
+popular <- popular[order(-N)]
+popular <- popular[1:50]
+pop_names <- popular$res_name
+rawData <- select(filter(rawData, res_name %in% pop_names),matches("*"))
+nrow(rawData)
+```
+
+#<a name="8"></a>
+# Korelacje między zmiennymi
+
+Do obliczenia korelacji użytko funkcji >cor< z parametrem >use = "pairwise.complete.obs<, który ignoruje w obliczeniach korelacji dla danej pary wartości NA.
+
+Podczas obliczania korelacji zauważono, że dla wszystkich kolumn part_XX jest ona bardzo podobna. W przedstawionej graficznej reprezentacji korelacji zabrano zmienne z part_01, by ograniczyć liczbę danych. Poza kolumnami part_01 w macierzy widzimy kolumy local_res_atom_non_h_electron_sum, local_res_atom_non_h_count, solvent_mask_count, void_mask_count, modeled_mask_count, solvent_ratio. Wybrano takie kolumny, ponieważ te kolumny będą brały w wyznaczaniu klasyfikatora.
+
+
+```{r cor_prepare_data_set, echo=FALSE}
+
+data <- rawData %>% select(local_res_atom_non_h_count, local_res_atom_non_h_electron_sum, part_01_shape_segments_count:part_01_density_Z_4_0)
+
+```
+
+Zmienne zostały posortowane wg algorytmu "FPC" (First Principal Component).
+
+```{r cor_calculate, echo=TRUE, cache=TRUE}
+
+correlation_data  <- cor(data, use = "pairwise.complete.obs")
+corrplot(correlation_data, method = "color", tl.cex = 0.4, order = "FPC", tl.col="black")
+
+
+```
+
+
+#<a name="9"></a>
+# Liczba przypadków dla każdej z klas
+
+```{r res_name_count, echo=FALSE}
+
+res_name_count  <- pdb_code_res_name %>% 
+                    group_by(res_name) %>%
+                    summarise(count = n()) %>% 
+                    arrange(desc(count))
+
+summary_res_name_count = summarise(group_by(res_name_count, count), class = paste(res_name, collapse = ", "))
+kable(summary_res_name_count)
+
+```
+
+#<a name=10"></a>
+# Wykresy rozkładu liczby atomów i elektronów
+
+
+##Rozkład atomów
+
+```{r atomHistogram, echo=FALSE}
+ggplot(pdb_code_res_name, aes(x=local_res_atom_non_h_count)) + geom_histogram(binwidth = 1, fill=I("white"), col=I("black")) + labs(title="Histogram for local_res_atom_non_h_count")
+
+```
+
+
+##Rozkład elektronów
+
+```{r electronHistogram, echo=FALSE}
+
+ggplot(pdb_code_res_name, aes(x=local_res_atom_non_h_electron_sum)) + geom_histogram(binwidth = 8, fill=I("white"), col=I("black")) + labs(title="Histogram for local_res_atom_non_h_electron_sum")
+
+```
+
+
+#<a name="11"></a>
+# Klasy z największą niezgodnością liczby atomów i elektronów
+## Klasy z największą niezgodnością liczby atomów
+
+```{r incompatibility_atom, echo=FALSE}
+
+incompatibility_atom_group <-  pdb_code_res_name %>% 
+                                select(res_name, as.numeric(local_res_atom_non_h_count), as.numeric(dict_atom_non_h_count)) %>%
+                                group_by(res_name) %>%
+                                summarise_each(funs(sum))
+
+incompatibility_atom  <- incompatibility_atom_group %>% 
+                          mutate(odds = abs(local_res_atom_non_h_count - dict_atom_non_h_count)) %>%
+                          arrange(desc(odds))
+
+```
+
+`r kable(head(incompatibility_atom, 10))`
+
+## Klasy z największą niezgodnością liczby elektronów
+
+```{r incompatibility_electron, echo=FALSE}
+
+incompatibility_electron_group <-  pdb_code_res_name %>% 
+                                select(res_name, as.numeric(local_res_atom_non_h_electron_sum), as.numeric(dict_atom_non_h_electron_sum)) %>%
+                                group_by(res_name) %>%
+                                summarise_each(funs(sum))
+
+incompatibility_electron  <- incompatibility_electron_group %>% 
+                          mutate(odds = abs(local_res_atom_non_h_electron_sum - dict_atom_non_h_electron_sum)) %>%
+                          arrange(desc(odds))
+
+```
+
+`r kable(head(incompatibility_electron, 10))`
+
+#<a name="12"></a>
+# Rozkład wartości kolumn part_01
+
+Sekcja przedstawia rozkład wartości wszystkich kolumn zaczynających się od part_01
+
+Usunięto wartości NA dla każdej kolumny z osobna. Nie zostały zamienione na wartość 0 by nie zaburzać rozkładu zmiennych.
+
+Na wykresach zaznaczono średnią wartość zmiennej (w formie graficznej oraz liczbowej).
+
+```{r part_01_chart, echo=FALSE, message=FALSE}
+
+part_01_data <- pdb_code_res_name %>% select(part_01_electrons:part_01_density_sqrt_E3)
+
+
+for (i in 1:length(part_01_data)) {
+
+  i_column <- part_01_data[,i]
+  i_column_without_NA <-  i_column[!is.na(i_column)]
+  
+  m <- mean(i_column_without_NA)
+  
+    p <- ggplot() + aes(i_column_without_NA) + geom_histogram(fill=I("white"), col=I("black")) + xlab(names(part_01_data[i])) + labs(title=paste("Histogram of ", names(part_01_data[i]))) + geom_vline(xintercept=m, color="red", linetype="dashed", size=1) + annotate("text", x=m, y=-300, label=c(m), hjust=-0.1, color="red")
+  
+  print(p)
+  
+
+
+}
+
+```
+
+#<a name="13"></a>
+# Wykres interaktywny
+```{r}
+ggplotly(qplot(local_res_atom_non_h_electron_sum, data=pdb_code_res_name))
+```
+
+#<a name="14"></a>
+#Przewidywanie liczby elektronów i atomów na podstawie innych kolumn
+
+```{r predict part_01_chart}
+lm_data <- rawData
+lm_data[is.na(lm_data)] <- 0
+lm_data <- dplyr::select_if(lm_data, is.numeric)
+
+lm_atom_model <- lm(local_res_atom_non_h_count ~ ., lm_data)
+lm_atom_summary <- summary(lm_atom_model)
+
+lm_electron_model <- lm(local_res_atom_non_h_electron_sum ~ ., lm_data)
+lm_electron_summary <- summary(lm_electron_model)
+
+```
+
+Miary dla liczby atomów:<br />
+R^2: `r lm_atom_summary$r.squared`<br />
+RMSEL `r lm_atom_summary$sigma`<br />
+
+Miary dla liczby elektronów:<br />
+R^2: `r lm_electron_summary$r.squared`<br />
+RMSEL `r lm_electron_summary$sigma`<br />
+
+#<a name="15"></a>
+#Klasyfikator
+
+Podczas prób budowy klasyfikatora ze zbioru danych wybrano klasy res_name, które mają minimum 50 wystąpień w pliku a następnie na ich podstawie zbudować klasyfikator. Do budowy klasyfikatora użyłem tylko wartośći, które zostały obliczone na podstawie ligandu.
+
+Użyto metody powtarzanej oceny krżyżowej, a model klasyfikacyjny powstał zgodnie z alogrytmem Random Forest.
